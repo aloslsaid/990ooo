@@ -1,0 +1,861 @@
+import pandas as pd
+
+import numpy as np
+
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from sklearn.compose import ColumnTransformer
+
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+
+files = [
+
+    "E0.csv",
+
+    "E0 (2).csv",
+
+    "E0 (3).csv",
+
+    "E0 (4).csv",
+
+    "E0 (5).csv"
+
+]
+
+dfs = []
+
+for file in files:
+
+    temp = pd.read_csv(file)
+
+    temp = temp[temp["Div"] == "E0"].copy()
+
+    dfs.append(temp)
+
+df = pd.concat(dfs, ignore_index=True)
+
+df["Date"] = pd.to_datetime(
+
+    df["Date"],
+
+    dayfirst=True,
+
+    errors="coerce"
+
+)
+
+df = df.sort_values("Date").reset_index(drop=True)
+
+numeric_columns = [
+
+    "FTHG", "FTAG",
+
+    "HxG", "AxG",
+
+    "HS", "AS",
+
+    "HST", "AST",
+
+    "HF", "AF",
+
+    "HC", "AC",
+
+    "HY", "AY",
+
+    "HR", "AR"
+
+]
+
+for col in numeric_columns:
+
+    if col in df.columns:
+
+        df[col] = pd.to_numeric(
+
+            df[col],
+
+            errors="coerce"
+
+        )
+# Fill NaN values in 'HxG' and 'AxG' with 0 before further processing
+df['HxG'] = df['HxG'].fillna(0)
+df['AxG'] = df['AxG'].fillna(0)
+
+df = df.dropna(
+
+    subset=[
+
+        "HomeTeam",
+
+        "AwayTeam",
+
+        "FTR"
+
+    ]
+
+).reset_index(drop=True)
+
+history = {}
+
+feature_rows = []
+
+def create_team():
+
+    return {
+
+        "GoalsFor": [],
+
+        "GoalsAgainst": [],
+
+        "xG": [],
+
+        "Shots": [],
+
+        "ShotsOnTarget": [],
+
+        "Corners": [],
+
+        "Fouls": [],
+
+        "YellowCards": [],
+
+        "RedCards": [],
+
+        "Results": []
+
+    }
+
+def average_last_5(values):
+
+    if not values:
+
+        return 0
+
+    return np.mean(values[-5:])
+
+def form_last_5(results):
+
+    points = 0
+
+    for result in results[-5:]:
+
+        if result == "W":
+
+            points += 3
+
+        elif result == "D":
+
+            points += 1
+
+    return points
+
+for _, row in df.iterrows():
+
+    home = row["HomeTeam"]
+
+    away = row["AwayTeam"]
+
+    if home not in history:
+
+        history[home] = create_team()
+
+    if away not in history:
+
+        history[away] = create_team()
+
+    home_history = history[home]
+
+    away_history = history[away]
+
+    home_matches = len(home_history["Results"])
+
+    away_matches = len(away_history["Results"])
+
+    if home_matches >= 1 and away_matches >= 1:
+
+        feature_rows.append({
+
+            "HomeTeam": home,
+
+            "AwayTeam": away,
+
+            "Home_GoalsFor": average_last_5(
+
+                home_history["GoalsFor"]
+
+            ),
+
+            "Home_GoalsAgainst": average_last_5(
+
+                home_history["GoalsAgainst"]
+
+            ),
+
+            "Home_xG": average_last_5(
+
+                home_history["xG"]
+
+            ),
+
+            "Home_Shots": average_last_5(
+
+                home_history["Shots"]
+
+            ),
+
+            "Home_ShotsOnTarget": average_last_5(
+
+                home_history["ShotsOnTarget"]
+
+            ),
+
+            "Home_Corners": average_last_5(
+
+                home_history["Corners"]
+
+            ),
+
+            "Home_Fouls": average_last_5(
+
+                home_history["Fouls"]
+
+            ),
+
+            "Home_YellowCards": average_last_5(
+
+                home_history["YellowCards"]
+
+            ),
+
+            "Home_RedCards": average_last_5(
+
+                home_history["RedCards"]
+
+            ),
+
+            "Home_Form": form_last_5(
+
+                home_history["Results"]
+
+            ),
+
+            "Away_GoalsFor": average_last_5(
+
+                away_history["GoalsFor"]
+
+            ),
+
+            "Away_GoalsAgainst": average_last_5(
+
+                away_history["GoalsAgainst"]
+
+            ),
+
+            "Away_xG": average_last_5(
+
+                away_history["xG"]
+
+            ),
+
+            "Away_Shots": average_last_5(
+
+                away_history["Shots"]
+
+            ),
+
+            "Away_ShotsOnTarget": average_last_5(
+
+                away_history["ShotsOnTarget"]
+
+            ),
+
+"Away_Corners": average_last_5(
+
+                away_history["Corners"]
+
+            ),
+
+            "Away_Fouls": average_last_5(
+                away_history["Fouls"]
+
+            ),
+
+            "Away_YellowCards": average_last_5(
+
+                away_history["YellowCards"]
+
+            ),
+
+            "Away_RedCards": average_last_5(
+
+                away_history["RedCards"]
+
+            ),
+
+            "Away_Form": form_last_5(
+
+                away_history["Results"]
+
+            ),
+
+            "Target": row["FTR"]
+
+        })
+
+    home_goals = row["FTHG"]
+
+    away_goals = row["FTAG"]
+
+    home_xg = row["HxG"]
+
+    away_xg = row["AxG"]
+
+    home_shots = row["HS"]
+
+    away_shots = row["AS"]
+
+    home_sot = row["HST"]
+
+    away_sot = row["AST"]
+
+    home_corners = row["HC"]
+
+    away_corners = row["AC"]
+
+    home_fouls = row["HF"]
+
+    away_fouls = row["AF"]
+
+    home_yellow = row["HY"]
+
+    away_yellow = row["AY"]
+
+    home_red = row["HR"]
+
+    away_red = row["AR"]
+
+    home_history["GoalsFor"].append(home_goals)
+
+    home_history["GoalsAgainst"].append(away_goals)
+
+    home_history["xG"].append(home_xg)
+
+    home_history["Shots"].append(home_shots)
+
+    home_history["ShotsOnTarget"].append(home_sot)
+
+    home_history["Corners"].append(home_corners)
+
+    home_history["Fouls"].append(home_fouls)
+
+    home_history["YellowCards"].append(home_yellow)
+
+    home_history["RedCards"].append(home_red)
+
+    away_history["GoalsFor"].append(away_goals)
+
+    away_history["GoalsAgainst"].append(home_goals)
+
+    away_history["xG"].append(away_xg)
+
+    away_history["Shots"].append(away_shots)
+
+    away_history["ShotsOnTarget"].append(away_sot)
+
+    away_history["Corners"].append(away_corners)
+
+    away_history["Fouls"].append(away_fouls)
+
+    away_history["YellowCards"].append(away_yellow)
+
+    away_history["RedCards"].append(away_red)
+
+    if row["FTR"] == "H":
+
+        home_history["Results"].append("W")
+
+        away_history["Results"].append("L")
+
+    elif row["FTR"] == "D":
+
+        home_history["Results"].append("D")
+
+        away_history["Results"].append("D")
+
+    elif row["FTR"] == "A":
+
+        home_history["Results"].append("L")
+
+        away_history["Results"].append("W")
+
+data = pd.DataFrame(feature_rows)
+
+X = data.drop(columns=["Target"])
+
+y = data["Target"]
+
+split_index = int(len(data) * 0.80)
+
+X_train = X.iloc[:split_index].copy()
+
+X_test = X.iloc[split_index:].copy()
+
+y_train = y.iloc[:split_index].copy()
+
+y_test = y.iloc[split_index:].copy()
+
+categorical_features = [
+
+    "HomeTeam",
+
+    "AwayTeam"
+
+]
+
+numeric_features = [
+
+    col
+
+    for col in X.columns
+
+    if col not in categorical_features
+
+]
+
+preprocessor = ColumnTransformer(
+
+    transformers=[
+
+        (
+
+            "teams",
+
+            OneHotEncoder(
+
+                handle_unknown="ignore"
+
+            ),
+
+            categorical_features
+
+        ),
+
+        (
+
+            "numbers",
+
+            StandardScaler(),
+
+            numeric_features
+
+        )
+
+    ]
+
+)
+
+X_train_encoded = preprocessor.fit_transform(X_train)
+
+X_test_encoded = preprocessor.transform(X_test)
+
+models = {
+
+    "Logistic Regression": LogisticRegression(
+
+        max_iter=2000
+
+    ),
+
+    "Random Forest": RandomForestClassifier(
+
+        n_estimators=500,
+
+        max_depth=10,
+
+        min_samples_leaf=3,
+
+        random_state=42,
+
+        class_weight="balanced"
+
+    ),
+
+    "Gradient Boosting": GradientBoostingClassifier(
+
+        n_estimators=300,
+
+        learning_rate=0.05,
+
+        max_depth=3,
+
+        random_state=42
+
+    )
+
+}
+
+results = []
+
+for name, model in models.items():
+
+    model.fit(
+
+        X_train_encoded,
+
+        y_train
+
+    )
+
+    predictions = model.predict(
+
+        X_test_encoded
+
+    )
+
+    accuracy = accuracy_score(
+
+        y_test,
+
+        predictions
+
+    )
+
+    precision = precision_score(
+
+        y_test,
+
+        predictions,
+
+        average="weighted",
+
+        zero_division=0
+
+    )
+
+    recall = recall_score(
+
+        y_test,
+
+        predictions,
+
+        average="weighted",
+
+        zero_division=0
+
+    )
+
+    f1 = f1_score(
+
+y_test,
+
+        predictions,
+
+        average="weighted",
+
+        zero_division=0
+
+    )
+
+    results.append({"Model": name,
+
+        "Accuracy": accuracy,
+
+        "Precision": precision,
+
+        "Recall": recall,
+
+        "F1": f1
+
+    })
+
+results_df = pd.DataFrame(results)
+
+print("\nMODEL COMPARISON")
+
+print(results_df.to_string(index=False))
+
+best_model_name = results_df.loc[
+
+    results_df["F1"].idxmax(),
+
+    "Model"
+
+]
+
+final_model = models[best_model_name]
+
+print("\nSelected Model:", best_model_name)
+
+print("\nCLASSIFICATION REPORT")
+
+final_predictions = final_model.predict(
+
+    X_test_encoded
+
+)
+
+print(
+
+    classification_report(
+
+        y_test,
+
+        final_predictions,
+
+        zero_division=0
+
+    )
+
+)
+
+team_latest = {}
+
+for team in history:
+
+    if len(history[team]["Results"]) > 0:
+
+        team_latest[team] = {
+
+            "GoalsFor": average_last_5(
+
+                history[team]["GoalsFor"]
+
+            ),
+
+            "GoalsAgainst": average_last_5(
+
+                history[team]["GoalsAgainst"]
+
+            ),
+
+            "xG": average_last_5(
+
+                history[team]["xG"]
+
+            ),
+
+            "Shots": average_last_5(
+
+                history[team]["Shots"]
+
+            ),
+
+            "ShotsOnTarget": average_last_5(
+
+                history[team]["ShotsOnTarget"]
+
+            ),
+
+            "Corners": average_last_5(
+
+                history[team]["Corners"]
+
+            ),
+
+            "Fouls": average_last_5(
+
+                history[team]["Fouls"]
+
+            ),
+
+            "YellowCards": average_last_5(
+
+                history[team]["YellowCards"]
+
+            ),
+
+            "RedCards": average_last_5(
+
+                history[team]["RedCards"]
+
+            ),
+
+            "Form": form_last_5(
+
+                history[team]["Results"]
+
+            )
+
+        }
+
+def predict_match(home_team, away_team):
+
+    if home_team not in team_latest:
+
+        raise ValueError(
+
+            f"{home_team} not found in dataset"
+
+        )
+
+    if away_team not in team_latest:
+
+        raise ValueError(
+
+            f"{away_team} not found in dataset"
+
+        )
+
+    home = team_latest[home_team]
+
+    away = team_latest[away_team]
+
+    new_match = pd.DataFrame([{
+
+        "HomeTeam": home_team,
+
+        "AwayTeam": away_team,
+
+        "Home_GoalsFor":
+
+            home["GoalsFor"],
+
+        "Home_GoalsAgainst":
+
+            home["GoalsAgainst"],
+
+        "Home_xG":
+
+            home["xG"],
+
+        "Home_Shots":
+
+            home["Shots"],
+
+        "Home_ShotsOnTarget":
+
+            home["ShotsOnTarget"],
+
+        "Home_Corners":
+
+            home["Corners"],
+
+        "Home_Fouls":
+
+            home["Fouls"],
+
+        "Home_YellowCards":
+
+            home["YellowCards"],
+
+        "Home_RedCards":
+
+            home["RedCards"],
+
+        "Home_Form":
+
+            home["Form"],
+
+        "Away_GoalsFor":
+
+            away["GoalsFor"],
+
+        "Away_GoalsAgainst":
+
+            away["GoalsAgainst"],
+
+        "Away_xG":
+
+            away["xG"],
+
+        "Away_Shots":
+
+            away["Shots"],
+
+        "Away_ShotsOnTarget":
+
+            away["ShotsOnTarget"],
+
+        "Away_Corners":
+
+            away["Corners"],
+
+        "Away_Fouls":
+
+            away["Fouls"],
+
+        "Away_YellowCards":
+
+            away["YellowCards"],
+
+        "Away_RedCards":
+
+            away["RedCards"],
+
+        "Away_Form":
+
+            away["Form"]
+
+    }])
+
+    encoded = preprocessor.transform(
+
+        new_match
+
+    )
+
+    prediction = final_model.predict(
+
+        encoded
+
+    )[0]
+
+    probabilities = final_model.predict_proba(
+
+        encoded
+
+    )[0]
+
+    print("\n==============================")
+
+    print(f"{home_team} vs {away_team}")
+
+    print("==============================")
+
+    if prediction == "H":
+
+        print("Prediction: HOME WIN")
+
+    elif prediction == "D":
+
+        print("Prediction: DRAW")
+
+    else:
+
+        print("Prediction: AWAY WIN")
+
+    for cls, probability in zip(
+
+        final_model.classes_,
+
+        probabilities
+
+    ):
+
+        if cls == "H": label = "Home Win"
+
+        elif cls == "D":
+
+            label = "Draw"
+
+        else:label = "Away Win"
+
+        print(
+
+            f"{label}: {probability * 100:.2f}%"
+
+        )
+
+predict_match(
+
+    "Arsenal",
+
+    "Man City"
+)
+
+
+         
